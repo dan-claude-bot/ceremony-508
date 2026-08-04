@@ -945,6 +945,20 @@ check "an hour-old claim does not silence a ruling 9 days quiet" 0 "" \
 check "...and the fresh assignment is not reclaim bait either" 1 "" \
   grep -q 'reclaimed' <<<"$claimed_fresh"
 
+# The claimed-branch top read, pinned (review round 1): `claimed` +
+# `needs-ruling` with no assignee posts `claimed-unassigned` before the
+# tail, so a ruling read taken down there would date the issue by the
+# sweep's own comment — the #274 hazard, on the very branch this issue is
+# about. One sweep, both outputs: the board diagnostic and the nudge it
+# must not silence. Reds the moment the top read drifts below the post.
+ruling_quiet 110
+timeline_add 110 assigned 3600
+unassigned_flag="$(issue_probe 110 $'claimed\nneeds-ruling' 0 false)"
+check "an unassigned claim under a ruling still draws its board flag" 0 "1" \
+  grep -cF '<!-- issueflow:claimed-unassigned -->' "$TMP/posted-110"
+check "...and the ruling nudge fires beside it, undated by it" 0 "" \
+  grep -q 'ruling nudge' <<<"$unassigned_flag"
+
 # The clock rule alone, no assignee in the way: an assigned/unassigned pair
 # in the timeline is the claim's history, not activity toward the ruling.
 ruling_quiet 102
