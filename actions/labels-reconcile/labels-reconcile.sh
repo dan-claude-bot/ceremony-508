@@ -951,7 +951,7 @@ stale|B60205|No activity for 48h — needs a poke (sweep-managed)
 blocked|6A737D|Waiting on another PR or issue to land first
 offsite|CFD3D7|Issue deliverable is a PR in another repository — claim clock paused
 needs-ruling|D4C5F9|A human decision is pending — question, options and a recommendation are in the comment
-operator|A371F7|An operator owns the work; the body names its evidence surface, command or observation, and wake condition
+operator|A371F7|Operator-owned; the body names the evidence surface, the command, and the wake condition
 rerun-owed|D4C5F9|The head is red on a rerun no agent may start — a human owes the button, not the builder a fix
 attention|D93F0B|A demand is parked here for the assignee: pick up the thread, ack by removing this label
 release|0E8A16|Release flow and version/packaging work
@@ -984,9 +984,22 @@ bootstrap_labels() { # BOOTSTRAP=yes only: ~20 upserts is too chatty for every s
     rows="$rows
 $(configured_label_rows "$LABELS_CONF")"
   fi
+  # Per-row tolerance, for the reason the retire loop below already records
+  # (#91's shape, #508): both run under `set -e`, so an unguarded call aborts
+  # the whole loop and every row after it is never attempted. That truncates a
+  # taxonomy rather than failing one label — and because the consumer's
+  # configured rows are appended AFTER the core rows, one bad core row takes
+  # the consumer's whole `scope:*` set with it. The observed shape: a bootstrap
+  # that landed 21 of 33 labels left a board carrying `blocked` and no `ready`,
+  # which reads as populated and is not a queue. Log the row, keep going, and
+  # fail at the end so a partial taxonomy is loud instead of green.
+  local failed_rows=""
   while IFS='|' read -r name color desc; do
     [ -n "$name" ] || continue
-    run gh label create "$name" -R "$REPO" --color "$color" --description "$desc" --force
+    if ! run gh label create "$name" -R "$REPO" --color "$color" --description "$desc" --force; then
+      failed_rows="$failed_rows $name"
+      log "bootstrap: '$name' not created — continuing"
+    fi
   done <<<"$rows"
 
   # LABELS.md publishes the defaults as deleted at bootstrap; until #93
@@ -1004,6 +1017,13 @@ $(configured_label_rows "$LABELS_CONF")"
     run gh label delete "$name" -R "$REPO" --yes \
       || log "retire: '$name' not deleted (already absent, or refused) — continuing"
   done <<<"$(retired_label_names)"
+
+  # One read, not one re-dispatch per bad row: a consumer looking at a
+  # half-built board needs the whole gap named at once (#508).
+  if [ -n "$failed_rows" ]; then
+    echo "::error::labels: bootstrap could not create:$failed_rows — the taxonomy is INCOMPLETE; fix those rows and re-dispatch"
+    return 1
+  fi
 }
 
 has_label() { grep -qxF "$1" <<<"$LABELS"; }

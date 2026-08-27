@@ -119,7 +119,7 @@ and re-entry does not set `attention`.
 | `blocked` | `#6A737D` | (see above — same label serves PRs waiting on another PR/issue; legitimately quiet, the staleness sweep skips it). The reconciler refuses `state:needs-human` while `blocked` stands — the PR falls to `state:addressing` (#180) |
 | `offsite` | `#CFD3D7` | issue deliverable is a PR in another repository; set by the builder with the draft link and cleared by the builder at handoff |
 | `needs-ruling` | `#D4C5F9` | a human-owned decision is required; use BUILDER.md's ruling template and ladder. Set by triage or the builder; a state, not a signal — it clears on agreement, not on a reply |
-| `operator` | `#A371F7` | issue-only: an operator owns the work; the body names its evidence surface, command or observation, and wake condition |
+| `operator` | `#A371F7` | issue-only: operator-owned; the body names the evidence surface, the command, and the wake condition |
 | `rerun-owed` | `#D4C5F9` | PR-only: the head is red on a rerun no agent may start, so the builder owes nothing until it is made. Set by the builder with its evidence; cleared by `ci-rerun` when it starts the attempt, and by the reconciler when the head recovers or moves (#424) |
 | `attention` | `#D93F0B` | issue-only demand parked for the assignee; hand-set, and never written by the machine |
 | `release` | `#0E8A16` | release flow, versioning, packaging work — and the ceremony PR itself |

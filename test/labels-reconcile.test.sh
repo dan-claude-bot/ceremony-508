@@ -343,7 +343,7 @@ expect "post-merge core row is byte-exact" \
   "post-merge|006B75|Refs-linked PR merged; post-merge criteria remain and triage owns completion" \
   "$(grep '^post-merge|' <<<"$core_rows")"
 expect "operator core row is byte-exact" \
-  "operator|A371F7|An operator owns the work; the body names its evidence surface, command or observation, and wake condition" \
+  "operator|A371F7|Operator-owned; the body names the evidence surface, the command, and the wake condition" \
   "$(grep '^operator|' <<<"$core_rows")"
 ready_core="$(grep '^ready|' <<<"$core_rows" | cut -d'|' -f3-)"
 # shellcheck disable=SC2016 # backticks are LABELS.md literals
@@ -1599,7 +1599,7 @@ expect "...and the recorded upsert set is unchanged from today's" \
   "$expected_upserts" \
   "$(sed -n 's/^gh label create \([^ ]*\) .*/\1/p' "$BOOT/happy")"
 expect "the bootstrap upserts operator from the central registry" 1 \
-  "$(grep -cF 'gh label create operator -R owner/repo --color A371F7 --description An operator owns the work; the body names its evidence surface, command or observation, and wake condition --force' "$BOOT/happy")"
+  "$(grep -cF 'gh label create operator -R owner/repo --color A371F7 --description Operator-owned; the body names the evidence surface, the command, and the wake condition --force' "$BOOT/happy")"
 
 # -- a missing label is success: gh exits non-zero with not-found, and the
 #    guard keeps that from aborting the dispatch. Red without the guard.
@@ -3996,6 +3996,50 @@ expect "...says the notice is retracted when the label arrives" yes \
   "$(grep -qF 'retracted when the label arrives' <<<"$consumers_flat" && echo yes || echo no)"
 expect "...and is honest about what the annotation alone could reach" yes \
   "$(grep -qF 'not reachable from the pull request' <<<"$consumers_flat" && echo yes || echo no)"
+
+# -- every label description fits GitHub's 100-character cap (#508) --------
+# The API rejects a longer one with `422 description is too long`, and because
+# bootstrap_labels() creates rows in order, one over-cap row truncated the
+# taxonomy at that row: `operator` measured 106 and took `ready`, `claimed`,
+# `epic`, `release` and every consumer `scope:*` row with it. Asserting the cap
+# here means the next over-long row reds in this repo rather than in a
+# stranger's first bootstrap.
+over_cap="$(core_label_rows | awk -F'|' 'NF>=3 && length($3)>100 {printf "%s(%d) ", $1, length($3)}')"
+expect "every core label description is within GitHub's 100-char cap" "" "$over_cap"
+
+# The longest row today, so a future addition can see the headroom it has.
+longest="$(core_label_rows | awk -F'|' 'NF>=3 {if (length($3)>m) m=length($3)} END{print m+0}')"
+expect "...and the longest is under the cap" yes \
+  "$([ "$longest" -le 100 ] && echo yes || echo no)"
+
+# -- the create loop tolerates one bad row (#508) ---------------------------
+# shellcheck disable=SC2016 # the '$' are literals in the script being grepped
+# The retire loop below it always did; this one did not, and `set -e` turned a
+# single 422 into a silently truncated taxonomy. Tolerance is what makes the
+# cap test above a belt rather than the only line of defence.
+expect "bootstrap_labels tolerates a failed create and continues" yes \
+  "$(grep -qF 'failed_rows="$failed_rows $name"' actions/labels-reconcile/labels-reconcile.sh \
+    && echo yes || echo no)"
+expect "...and fails the run rather than passing a partial taxonomy" yes \
+  "$(grep -qF 'the taxonomy is INCOMPLETE' actions/labels-reconcile/labels-reconcile.sh \
+    && echo yes || echo no)"
+
+# -- LABELS.md's table and core_label_rows() agree on `operator` (#508) -----
+# The reword had to happen twice: LABELS.md publishes its own copy of every
+# description, and its `operator` row differed in wording ("issue-only: an
+# operator owns the work…") enough that a grep for the script's exact string
+# did not find it. Two copies of one sentence with no assertion between them is
+# how a doc goes stale without anything reporting it.
+# shellcheck disable=SC2016 # backticks and '$' are LABELS.md/awk literals
+op_script="$(core_label_rows | awk -F'|' '$1=="operator"{print $3}')"
+# shellcheck disable=SC2016 # backticks are LABELS.md literals, not expansions
+op_doc="$(grep -F '| `operator` | `#A371F7` |' LABELS.md \
+  | sed 's/.*`#A371F7` | issue-only: //; s/ |$//')"
+expect "LABELS.md's operator row matches the registry's description" yes \
+  "$([ "$(printf '%s' "$op_script" | tr '[:upper:]' '[:lower:]')" = \
+       "$(printf '%s' "$op_doc" | tr '[:upper:]' '[:lower:]')" ] && echo yes || echo no)"
+expect "...and the doc copy is within the cap too" yes \
+  "$([ "${#op_doc}" -le 100 ] && echo yes || echo no)"
 
 printf 'labels-reconcile tests: %d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
